@@ -95,15 +95,16 @@
   })();
 
   // ---------- เพลง ----------
-  // ค่าเริ่มต้นคือทำนองกล่องดนตรีที่สังเคราะห์สด ๆ ด้วย Web Audio (ไม่ต้องมีไฟล์เพลง)
+  // ค่าเริ่มต้นคือทำนองกล่องดนตรีที่เว็บสังเคราะห์เอง แล้วเล่นผ่านแท็ก <audio>
+  // (วิธีนี้ยังมีเสียงแม้ iPhone/iPad เปิดสวิตช์ปิดเสียงไว้ และไม่ต้องมีไฟล์เพลง)
   var Music = (function () {
-    var ctx = null, master = null, bus = null, on = true, playing = false, timer = 0, nextT = 0, step = 0, audio = null, fadeT = 0;
-    var STEP = 0.4;
+    var el = null, on = true, playing = false, ready = false, started = false, fadeT = 0, building = false;
+    var STEP = 0.4, SR = 32000, LOOP = STEP * 32;
     var CHORDS = [[48, 60, 64, 67, 71, 74], [45, 57, 60, 64, 67, 72], [41, 53, 57, 60, 64, 69], [43, 55, 59, 62, 67, 71]];
     var PAT = [1, 3, 2, 4, 5, 4, 3, 2];
     function hz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
-    function pluck(t, m, vel) {
-      var g = ctx.createGain(), o = ctx.createOscillator(), o2 = ctx.createOscillator(), g2 = ctx.createGain();
+    function pluck(c, bus, t, m, vel) {
+      var g = c.createGain(), o = c.createOscillator(), o2 = c.createOscillator(), g2 = c.createGain();
       o.type = 'sine'; o.frequency.value = hz(m);
       o2.type = 'sine'; o2.frequency.value = hz(m) * 3; g2.gain.value = 0.16;
       g.gain.setValueAtTime(0.0001, t);
@@ -112,67 +113,88 @@
       o.connect(g); o2.connect(g2); g2.connect(g); g.connect(bus);
       o.start(t); o2.start(t); o.stop(t + 1.8); o2.stop(t + 1.8);
     }
-    function padNote(t, m, dur, vol, type) {
-      var o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    function padNote(c, out, t, m, dur, vol, type) {
+      var o = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain();
       o.type = type; o.frequency.value = hz(m); f.type = 'lowpass'; f.frequency.value = 650;
       g.gain.setValueAtTime(0.0001, t);
       g.gain.linearRampToValueAtTime(vol, t + 1.1);
       g.gain.setValueAtTime(vol, t + dur - 0.3);
       g.gain.linearRampToValueAtTime(0.0001, t + dur + 1.0);
-      o.connect(f); f.connect(g); g.connect(master);
+      o.connect(f); f.connect(g); g.connect(out);
       o.start(t); o.stop(t + dur + 1.1);
     }
-    function schedule() {
-      if (!ctx) return;
-      while (nextT < ctx.currentTime + 0.6) {
-        var bar = (step >> 3) % 4, i = step & 7, ch = CHORDS[bar];
-        if (i === 0) { padNote(nextT, ch[0], STEP * 8, 0.09, 'sine'); padNote(nextT, ch[1], STEP * 8, 0.035, 'triangle'); padNote(nextT, ch[3], STEP * 8, 0.03, 'triangle'); }
-        pluck(nextT, ch[PAT[i]] + 12, i === 0 ? 0.2 : (i % 2 ? 0.09 : 0.13));
-        if (i === 6 && (step >> 5) % 2 === 1) pluck(nextT + STEP / 2, ch[5] + 12, 0.07);
-        nextT += STEP; step++;
-      }
+    function wav(samples) {
+      var n = samples.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+      function str(o, t) { for (var k = 0; k < t.length; k++) v.setUint8(o + k, t.charCodeAt(k)); }
+      str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+      v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, SR, true); v.setUint32(28, SR * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+      str(36, 'data'); v.setUint32(40, n * 2, true);
+      for (var i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 32767, true);
+      return new Blob([buf], { type: 'audio/wav' });
     }
-    function fadeAudio(to) {
-      clearInterval(fadeT);
-      fadeT = setInterval(function () {
-        if (!audio) return clearInterval(fadeT);
-        var v = audio.volume + (to > audio.volume ? 0.04 : -0.04);
-        if (Math.abs(v - to) < 0.05) { v = to; clearInterval(fadeT); }
-        audio.volume = Math.max(0, Math.min(1, v));
-      }, 80);
-    }
-    function apply() {
-      if (audio) fadeAudio(on && playing ? 0.75 : 0);
-      else if (ctx) master.gain.linearRampToValueAtTime(on && playing ? 0.6 : 0.0001, ctx.currentTime + 1.6);
-    }
-    function prime() {
-      if (C.musicFile && !audio) {
-        audio = new Audio(C.musicFile); audio.loop = true; audio.volume = 0;
-        audio.addEventListener('error', function () { audio = null; C.musicFile = ''; });
-        var p = audio.play(); if (p && p.catch) p.catch(function () {});
-      }
-      if (C.musicFile) return;
-      if (!ctx) {
-        var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-        ctx = new AC();
-        master = ctx.createGain(); master.gain.value = 0.0001; master.connect(ctx.destination);
-        bus = ctx.createGain(); bus.connect(master);
-        var delay = ctx.createDelay(2), fb = ctx.createGain(), wet = ctx.createGain(), lp = ctx.createBiquadFilter();
+    // เรนเดอร์ 2 รอบแล้วตัดรอบที่ 2 มาวน เพื่อให้ต่อกันเนียนไม่สะดุด
+    function build() {
+      if (building || ready) return; building = true;
+      var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      if (!OAC) return;
+      try {
+        var c = new OAC(1, Math.ceil(SR * LOOP * 2), SR);
+        var master = c.createGain(); master.gain.value = 0.6; master.connect(c.destination);
+        var bus = c.createGain(); bus.connect(master);
+        var delay = c.createDelay(2), fb = c.createGain(), wet = c.createGain(), lp = c.createBiquadFilter();
         delay.delayTime.value = STEP * 1.5; fb.gain.value = 0.36; wet.gain.value = 0.34; lp.type = 'lowpass'; lp.frequency.value = 2400;
         bus.connect(delay); delay.connect(lp); lp.connect(fb); fb.connect(delay); lp.connect(wet); wet.connect(master);
+        for (var step = 0; step < 64; step++) {
+          var t = step * STEP, bar = (step >> 3) % 4, i = step & 7, ch = CHORDS[bar];
+          if (i === 0) { padNote(c, master, t, ch[0], STEP * 8, 0.09, 'sine'); padNote(c, master, t, ch[1], STEP * 8, 0.035, 'triangle'); padNote(c, master, t, ch[3], STEP * 8, 0.03, 'triangle'); }
+          pluck(c, bus, t, ch[PAT[i]] + 12, i === 0 ? 0.2 : (i % 2 ? 0.09 : 0.13));
+          if (i === 6 && (step >> 5) % 2 === 1) pluck(c, bus, t + STEP / 2, ch[5] + 12, 0.07);
+        }
+        var done = function (b) {
+          var d = b.getChannelData(0), from = Math.round(SR * LOOP), out = d.slice(from, from + Math.round(SR * LOOP)), peak = 0, k;
+          for (k = 0; k < out.length; k++) peak = Math.max(peak, Math.abs(out[k]));
+          var gain = peak > 0 ? 0.6 / peak : 1;                     // ปรับให้ดังพอสำหรับลำโพงมือถือ
+          for (k = 0; k < out.length; k++) out[k] *= gain;
+          el = new Audio(); el.loop = true; el.preload = 'auto'; el.muted = true; el.setAttribute('playsinline', '');
+          el.src = URL.createObjectURL(wav(out)); ready = true; sync();
+        };
+        var r = c.startRendering(); if (r && r.then) r.then(done); else c.oncomplete = function (e) { done(e.renderedBuffer); };
+      } catch (err) { if (window.console) console.warn('สร้างเพลงไม่สำเร็จ', err); }
+    }
+    function fade(to) {
+      clearInterval(fadeT);
+      try { fadeT = setInterval(function () {
+        var v = el.volume + (to > el.volume ? 0.05 : -0.05);
+        if (Math.abs(v - to) < 0.06) { v = to; clearInterval(fadeT); }
+        el.volume = Math.max(0, Math.min(1, v));
+      }, 90); } catch (_) {}
+    }
+    function sync() {
+      if (!el) return;
+      var audible = on && playing;
+      if (audible) { el.muted = false; if (started) fade(1); }
+      else { el.muted = true; }
+      if (el.paused && (started || playing)) { var p = el.play(); if (p && p.catch) p.catch(function () { started = false; }); }
+    }
+    // เรียกทุกครั้งที่ผู้ใช้แตะ/กดคีย์ เพราะเบราว์เซอร์อนุญาตให้เริ่มเสียงได้เฉพาะตอนนั้น
+    function prime() {
+      if (C.musicFile && !el) {
+        el = new Audio(C.musicFile); el.loop = true; el.muted = true; ready = true;
+        el.addEventListener('error', function () { el = null; ready = false; C.musicFile = ''; build(); });
       }
-      if (ctx.state === 'suspended') ctx.resume();
-      if (playing && !timer) begin();
+      if (!C.musicFile) build();
+      if (!el || !ready) return;
+      if (el.paused) { var p = el.play(); if (p && p.then) p.then(function () { started = true; sync(); }, function () {}); }
+      else { started = true; sync(); }
     }
-    function begin() {
-      if (!ctx || timer) return;
-      nextT = ctx.currentTime + 0.15; schedule(); timer = setInterval(schedule, 150); apply();
-    }
-    document.addEventListener('pointerdown', prime, { passive: true });
+    ['pointerdown', 'touchend', 'click', 'keydown'].forEach(function (ev) { document.addEventListener(ev, prime, { passive: true, capture: true }); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && playing) { prime(); sync(); } });
+    build();
     return {
       prime: prime,
-      play: function () { playing = true; prime(); if (audio) { try { audio.currentTime = 0; } catch (_) {} apply(); } else begin(); },
-      toggle: function () { on = !on; apply(); return on; }
+      play: function () { playing = true; if (el) { try { el.currentTime = 0; } catch (_) {} } prime(); sync(); },
+      toggle: function () { on = !on; if (on) prime(); sync(); return on; }
     };
   })();
 
