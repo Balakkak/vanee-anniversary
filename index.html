@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07030f">
+<title>For You ♡</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23ff7ac3' d='M16 28S3 20 3 11a7 7 0 0 1 13-3 7 7 0 0 1 13 3c0 9-13 17-13 17z'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Charmonman:wght@400;700&family=Great+Vibes&family=Mali:wght@400;600&family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="is-locked">
+
+<!-- จักรวาล -->
+<canvas id="space" aria-hidden="true"></canvas>
+<div id="orbs"></div>
+
+<!-- หัวข้อ + ตัวนับเวลา -->
+<header id="hud" aria-live="off">
+  <p class="hud-kicker" id="hudKicker"></p>
+  <h1 class="hud-title">Happy Anniversary</h1>
+  <p class="hud-names" id="hudNames"></p>
+  <div class="counter" id="counter" aria-label="เวลาที่เราอยู่ด้วยกัน">
+    <span class="counter-label">เรารักกันมาแล้ว</span>
+    <div class="counter-row">
+      <div class="unit"><b id="cDays">0</b><i>วัน</i></div>
+      <div class="unit"><b id="cHours">00</b><i>ชั่วโมง</i></div>
+      <div class="unit"><b id="cMins">00</b><i>นาที</i></div>
+      <div class="unit"><b id="cSecs">00</b><i>วินาที</i></div>
+    </div>
+  </div>
+</header>
+
+<button id="sound" class="icon-btn" type="button" aria-label="เปิดหรือปิดเสียงเพลง" aria-pressed="true">
+  <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+</button>
+
+<p id="hint">ลากเพื่อหมุนจักรวาล · แตะสิ่งที่ลอยอยู่เพื่อเปิดดู</p>
+
+<!-- เมนูด้านล่าง -->
+<nav id="dock" aria-label="ของขวัญ">
+  <button type="button" data-open="letter"><span class="ico">💌</span><span class="lbl">จดหมาย</span></button>
+  <button type="button" data-open="coupon"><span class="ico">🎟️</span><span class="lbl">คูปองรัก</span></button>
+  <button type="button" data-open="puzzle"><span class="ico">🧩</span><span class="lbl">จิ๊กซอว์</span></button>
+  <button type="button" data-open="album"><span class="ico">📸</span><span class="lbl">อัลบั้ม</span></button>
+  <button type="button" data-open="finale" class="gift"><span class="ico">🎁</span><span class="lbl">เซอร์ไพรส์</span></button>
+</nav>
+
+<!-- หน้าแรก: ใส่รหัส -->
+<section id="gate" aria-label="ปลดล็อกของขวัญ">
+  <div class="gate-card">
+    <p class="gate-kicker">a little universe, made for you</p>
+    <h2 class="gate-title">For My Love</h2>
+    <p class="gate-ask" id="gateAsk">ใส่วันที่เราเริ่มคบกัน เพื่อเปิดของขวัญ</p>
+    <div class="dots" id="dots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <p class="gate-format" id="gateMsg">วัน วัน · เดือน เดือน</p>
+    <div class="keypad" id="keypad">
+      <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+      <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+      <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+      <span class="key-gap" aria-hidden="true">♡</span><button type="button" data-k="0">0</button><button type="button" data-k="del" aria-label="ลบ">⌫</button>
+    </div>
+    <button type="button" class="pill big" id="gateOpen" hidden>แตะเพื่อเปิดของขวัญ ♡</button>
+  </div>
+</section>
+
+<!-- ฉากจบ -->
+<div id="finale" aria-live="polite">
+  <p class="finale-line" id="finaleA"></p>
+  <p class="finale-line" id="finaleB"></p>
+  <button type="button" class="pill big" id="finaleNext">แตะเพื่อไปต่อ ♡</button>
+</div>
+
+<!-- หน้าต่างของขวัญ -->
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>
+  <div class="sheet" id="sheet">
+    <h2 class="sheet-title" id="modalTitle"></h2>
+    <p class="sheet-sub" id="modalSub"></p>
+
+    <div class="panel" data-panel="letter">
+      <div class="letter" id="letterBody"></div>
+    </div>
+
+    <div class="panel" data-panel="coupon">
+      <div class="cards" id="cards"></div>
+      <button type="button" class="link-btn" id="reshuffle" hidden>สุ่มใหม่อีกรอบ</button>
+    </div>
+
+    <div class="panel" data-panel="puzzle">
+      <div class="puzzle" id="puzzle"></div>
+      <p class="puzzle-status" id="puzzleStatus"></p>
+      <button type="button" class="link-btn" id="puzzleReset">สลับใหม่</button>
+    </div>
+
+    <div class="panel" data-panel="album">
+      <div class="album-stage">
+        <button type="button" class="nav prev" id="albumPrev" aria-label="รูปก่อนหน้า">‹</button>
+        <figure class="polaroid" id="polaroid">
+          <img id="albumImg" alt="">
+          <figcaption>
+            <span class="cap" id="albumCap"></span>
+            <span class="date" id="albumDate"></span>
+          </figcaption>
+        </figure>
+        <button type="button" class="nav next" id="albumNext" aria-label="รูปถัดไป">›</button>
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+    </div>
+
+    <div class="panel" data-panel="final">
+      <figure class="polaroid tilt"><img id="finalImg" alt=""></figure>
+      <p class="final-kicker" id="finalKicker"></p>
+      <p class="final-msg" id="finalMsg"></p>
+      <p class="final-love">รักเตงนะ ♡</p>
+    </div>
+
+    <button type="button" class="pill" id="modalClose">ปิด ✦</button>
+  </div>
+</div>
+
+<canvas id="fx" aria-hidden="true"></canvas>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="js/config.js"></script>
+<script src="js/photos.js"></script>
+<script src="js/portrait.js"></script>
+<script src="js/galaxy.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
